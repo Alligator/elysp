@@ -791,7 +791,7 @@ function primEqual(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 2, -1);
   let prev: Obj | null = null;
   let eq = true;
-  forEach(args, (obj) => {
+  forEach(evaluateList(env, args), (obj) => {
     if (prev === null) {
       prev = obj;
       return;
