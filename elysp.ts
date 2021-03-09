@@ -394,10 +394,11 @@ function apply(env: ObjEnv, fn: Obj, args: Obj): Obj {
   throw new Error(`cannot apply ${repr(fn)}`);
 }
 
-function forEach(list: Obj, callback: (obj: Obj) => void) {
+function forEach(list: Obj, callback: (obj: Obj, index: number) => void) {
   let obj: Obj = list;
+  let index = 0;
   while (obj.type === ObjType.Pair) {
-    callback(obj.car);
+    callback(obj.car, index++);
     obj = obj.cdr;
   }
 }
@@ -635,22 +636,17 @@ function getArg(env: ObjEnv, args: Obj, type: ObjType, index: number): Obj {
     throw new Error('expected list as arguments');
   }
 
-  let obj: Obj = args;
-  let arg = obj.car;
-
-  for (let i = 0; i < index; i++) {
-    if (obj.type === ObjType.Pair) {
-      arg = obj.car;
-      obj = obj.cdr;
-    } else {
-      throw new Error('arity mismatch');
+  let argAtIndex: Obj = nil;
+  forEach(args, (arg: Obj, argIndex: number) => {
+    if (index === argIndex) {
+      argAtIndex = arg;
     }
-  }
+  });
 
-  const earg = evaluate(env, arg);
+  const earg = evaluate(env, argAtIndex);
 
   if (earg.type !== type) {
-    throw new Error(`expected type ${type} but got ${arg.type}`);
+    throw new Error(`expected type ${type} but got ${argAtIndex.type}`);
   }
   return earg;
 }
