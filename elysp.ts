@@ -716,19 +716,6 @@ function primPrintln(env: ObjEnv, args: Obj): Obj {
   return nil;
 }
 
-function primPlus(env: ObjEnv, args: Obj): Obj {
-  checkArity(args, 1, -1);
-  if (args.type === ObjType.Pair) {
-    const eargs = getArgList(env, args, ObjType.Num, 0);
-    let sum = 0;
-    forEach(eargs, (arg) => {
-      sum += (arg as ObjNum).value;
-    });
-    return makeNum(sum);
-  }
-  return nil;
-}
-
 function primQuote(env: ObjEnv, args: Obj): Obj {
   if (args.type !== ObjType.Pair) {
     throw new Error('malformed quote');
@@ -856,6 +843,15 @@ function primMacex(env: ObjEnv, args: Obj): Obj {
   return macroExpand(env, (args as ObjPair).car);
 }
 
+function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
+  return (env, args) => {
+    checkArity(args, 2);
+    const a = getArg(env, args, ObjType.Num, 0) as ObjNum;
+    const b = getArg(env, args, ObjType.Num, 1) as ObjNum;
+    return makeNum(fn(a.value, b.value));
+  }
+}
+
 const env = makeEnv(nil, nil);
 addVariable(env, intern('nil'), nil);
 
@@ -868,12 +864,15 @@ const primitives: Record<string, ElyspFn> = {
   'unquote': primUnquote,
   'cons': primCons,
   'print': primPrintln,
-  '+': primPlus,
   'env': (env) => env,
   '=': primEqual,
   'slurp': primSlurp,
   'reader/debug': primReaderDebug,
   'macex': primMacex,
+  '+': createNumericPrim((a, b) => a + b),
+  '-': createNumericPrim((a, b) => a - b),
+  '*': createNumericPrim((a, b) => a * b),
+  '/': createNumericPrim((a, b) => a / b),
 };
 
 Object.entries(primitives).map(([name, value]) => {
