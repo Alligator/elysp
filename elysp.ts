@@ -595,6 +595,8 @@ class Reader {
   }
 }
 
+
+// UTILS
 function listLen(list: Obj): number {
   if (list.type !== ObjType.Pair) {
     return 0;
@@ -620,7 +622,7 @@ function isList(list: Obj): boolean {
 
 function checkArity(args: Obj, min: number, max: number = min) {
   const len = listLen(args);
-  if (len < min || len > max) {
+  if ((min !== -1 && len < min) || (max !== -1 && len > max)) {
     throw new Error('arity mismatch');
   }
 }
@@ -653,38 +655,20 @@ function getArg(env: ObjEnv, args: Obj, type: ObjType, index: number): Obj {
   return earg;
 }
 
-// PRIMITIVES
-function primPrintln(env: ObjEnv, args: Obj): Obj {
-  if (args.type === ObjType.Pair) {
-    const evaledArgs = evaluateList(env, args);
-    if (evaledArgs.type === ObjType.Pair) {
-      forEach(evaledArgs, (arg: Obj) => {
-        print(arg);
-        puts(' ');
-      });
-    }
-  } else {
-    print(evaluate(env, args));
+function getArgList(env: ObjEnv, args: Obj, type: ObjType, startIndex: number): Obj {
+  if (args === nil) {
+    return nil;
   }
-  puts('\n');
-  return nil;
-}
 
-function primPlus(env: ObjEnv, args: Obj): Obj {
-  if (args.type === ObjType.Pair) {
-    const evaledArgs = evaluateList(env, args);
-    if (evaledArgs.type === ObjType.Pair) {
-      let sum = 0;
-      forEach(evaledArgs, (arg: Obj) => {
-        if (arg.type !== ObjType.Num) {
-          throw new Error('+ expected a number');
-        }
-        sum += arg.value;
-      });
-      return makeNum(sum);
+  const evaledArgs = evaluateList(env, args);
+
+  forEach(evaledArgs, (arg) => {
+    if (arg.type !== type) {
+      throw new Error(`expected ${type} but got ${arg.type}`);
     }
-  }
-  return nil;
+  });
+
+  return evaledArgs;
 }
 
 function evaluateUnquotes(env: ObjEnv, args: Obj): Obj {
@@ -718,11 +702,41 @@ function evaluateUnquotes(env: ObjEnv, args: Obj): Obj {
   return head;
 }
 
+
+// PRIMITIVES
+function primPrintln(env: ObjEnv, args: Obj): Obj {
+  if (args.type === ObjType.Pair) {
+    const evaledArgs = evaluateList(env, args);
+    if (evaledArgs.type === ObjType.Pair) {
+      forEach(evaledArgs, (arg: Obj) => {
+        print(arg);
+        puts(' ');
+      });
+    }
+  } else {
+    print(evaluate(env, args));
+  }
+  puts('\n');
+  return nil;
+}
+
+function primPlus(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 1, -1);
+  if (args.type === ObjType.Pair) {
+    const eargs = getArgList(env, args, ObjType.Num, 0);
+    let sum = 0;
+    forEach(eargs, (arg) => {
+      sum += (arg as ObjNum).value;
+    });
+    return makeNum(sum);
+  }
+  return nil;
+}
+
 function primQuote(env: ObjEnv, args: Obj): Obj {
   if (args.type !== ObjType.Pair) {
     throw new Error('malformed quote');
   }
-
   return evaluateUnquotes(env, args.car);
 }
 
@@ -747,6 +761,7 @@ function primDefine(env: ObjEnv, args: Obj): Obj {
 }
 
 function primDefn(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 3, -1);
   if (!(args.type === ObjType.Pair && args.car.type === ObjType.Symbol && args.cdr.type === ObjType.Pair)) {
     throw new Error('malformed defn');
   }
@@ -758,6 +773,7 @@ function primDefn(env: ObjEnv, args: Obj): Obj {
 }
 
 function primFn(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 2, -1);
   if (args.type !== ObjType.Pair || !isList(args) || args.cdr.type !== ObjType.Pair) {
     throw new Error('malformed lambda');
   }
@@ -772,6 +788,7 @@ function primFn(env: ObjEnv, args: Obj): Obj {
 }
 
 function primEqual(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 2, -1);
   let prev: Obj | null = null;
   let eq = true;
   forEach(args, (obj) => {
