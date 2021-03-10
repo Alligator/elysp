@@ -378,7 +378,7 @@ function apply(env: ObjEnv, fn: Obj, args: Obj): Obj {
     }
     case ObjType.Pair: {
       checkArity(args, 1);
-      const index = getArg(env, args, ObjType.Num, 0) as ObjNum;
+      const index = getArg(env, args, 0, ObjType.Num) as ObjNum;
       let currentIndex = 0;
       let obj: Obj = fn;
       while (obj.type === ObjType.Pair) {
@@ -628,7 +628,7 @@ function checkArity(args: Obj, min: number, max: number = min) {
   }
 }
 
-function getArg(env: ObjEnv, args: Obj, type: ObjType, index: number): Obj {
+function getArg(env: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
   if (args === nil) {
     return nil;
   }
@@ -645,7 +645,7 @@ function getArg(env: ObjEnv, args: Obj, type: ObjType, index: number): Obj {
 
   const earg = evaluate(env, argAtIndex);
 
-  if (earg.type !== type) {
+  if (type && earg.type !== type) {
     throw new Error(`expected type ${type} but got ${argAtIndex.type}`);
   }
   return earg;
@@ -793,7 +793,7 @@ function primEqual(env: ObjEnv, args: Obj): Obj {
 
 function primSlurp(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
-  const sym = getArg(env, args, ObjType.String, 0) as ObjString;
+  const sym = getArg(env, args, 0, ObjType.String) as ObjString;
   return makeString(Deno.readTextFileSync(sym.value));
 }
 
@@ -847,7 +847,7 @@ function primImport(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
 
   // read file
-  const path = getArg(env, args, ObjType.String, 0) as ObjString;
+  const path = getArg(env, args, 0, ObjType.String) as ObjString;
   const fileContent = Deno.readTextFileSync(path.value);
 
   // eval file
@@ -877,11 +877,24 @@ function primImport(env: ObjEnv, args: Obj): Obj {
   return moduleEnv;
 }
 
+function primError(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 2);
+  const val = getArg(env, args, 0);
+  const msg = getArg(env, args, 1, ObjType.String) as ObjString;
+
+  // we only have 't and nil
+  if (val === nil) {
+    throw new Error(msg.value);
+  }
+
+  return nil;
+}
+
 function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
   return (env, args) => {
     checkArity(args, 2);
-    const a = getArg(env, args, ObjType.Num, 0) as ObjNum;
-    const b = getArg(env, args, ObjType.Num, 1) as ObjNum;
+    const a = getArg(env, args, 0, ObjType.Num) as ObjNum;
+    const b = getArg(env, args, 1, ObjType.Num) as ObjNum;
     return makeNum(fn(a.value, b.value));
   }
 }
@@ -901,6 +914,7 @@ function createDefaultEnv(): ObjEnv {
     'env': (env) => env,
     'macex': primMacex,
     'import': primImport,
+    'error': primError,
     'io/slurp': primSlurp,
     'io/print': primPrintln,
     'reader/debug': primReaderDebug,
