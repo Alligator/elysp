@@ -843,6 +843,40 @@ function primMacex(env: ObjEnv, args: Obj): Obj {
   return macroExpand(env, (args as ObjPair).car);
 }
 
+function primImport(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 1);
+
+  // read file
+  const path = getArg(env, args, ObjType.String, 0) as ObjString;
+  const fileContent = Deno.readTextFileSync(path.value);
+
+  // eval file
+  const moduleGlobalEnv = createDefaultEnv();
+  const moduleEnv = makeEnv(nil, moduleGlobalEnv);
+  const reader = new Reader(fileContent);
+
+  try {
+    while (!reader.atEof()) {
+      const next = reader.read();
+      if (next === null) {
+        break;
+      }
+      evaluate(moduleEnv, next);
+    }
+  } catch (e) {
+    throw e;
+  }
+
+  // merge env
+  forEach(moduleEnv.vars, (obj: Obj) => {
+    if (obj.type === ObjType.Pair && obj.car.type === ObjType.Symbol) {
+      addVariable(env, obj.car, obj.cdr);
+    }
+  });
+
+  return moduleEnv;
+}
+
 function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
   return (env, args) => {
     checkArity(args, 2);
@@ -852,36 +886,43 @@ function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
   }
 }
 
-const env = makeEnv(nil, nil);
-addVariable(env, intern('nil'), nil);
+function createDefaultEnv(): ObjEnv {
+  const env = makeEnv(nil, nil);
+  addVariable(env, intern('nil'), nil);
 
-const primitives: Record<string, ElyspFn> = {
-  'fn': primFn,
-  'define': primDefine,
-  'defn': primDefn,
-  'defmacro': primDefmacro,
-  'quote': primQuote,
-  'unquote': primUnquote,
-  'cons': primCons,
-  'print': primPrintln,
-  'env': (env) => env,
-  '=': primEqual,
-  'slurp': primSlurp,
-  'reader/debug': primReaderDebug,
-  'macex': primMacex,
-  '+': createNumericPrim((a, b) => a + b),
-  '-': createNumericPrim((a, b) => a - b),
-  '*': createNumericPrim((a, b) => a * b),
-  '/': createNumericPrim((a, b) => a / b),
-};
+  const primitives: Record<string, ElyspFn> = {
+    'fn': primFn,
+    'define': primDefine,
+    'defn': primDefn,
+    'defmacro': primDefmacro,
+    'quote': primQuote,
+    'unquote': primUnquote,
+    'cons': primCons,
+    'env': (env) => env,
+    'macex': primMacex,
+    'import': primImport,
+    'io/slurp': primSlurp,
+    'io/print': primPrintln,
+    'reader/debug': primReaderDebug,
+    '=': primEqual,
+    '+': createNumericPrim((a, b) => a + b),
+    '-': createNumericPrim((a, b) => a - b),
+    '*': createNumericPrim((a, b) => a * b),
+    '/': createNumericPrim((a, b) => a / b),
+  };
 
-Object.entries(primitives).map(([name, value]) => {
-  addVariable(env, intern(name), makeNativeFn(value));
-});
+  Object.entries(primitives).map(([name, value]) => {
+    addVariable(env, intern(name), makeNativeFn(value));
+  });
+
+  return env;
+}
 
 function readerDebugEnabled(env: ObjEnv): boolean {
   return find(env, intern('reader-debug')) === trueSym;
 }
+
+const env = createDefaultEnv();
 
 if (Deno.args.length) {
   // file
