@@ -313,8 +313,12 @@ function macroExpand(env: ObjEnv, obj: Obj): Obj {
 
 function evaluate(env: ObjEnv, val: Obj): Obj {
   switch (val.type) {
+    case ObjType.Nil:
+    case ObjType.Env:
     case ObjType.String:
     case ObjType.Fn:
+    case ObjType.Macro:
+    case ObjType.NativeFn:
     case ObjType.Num: {
       return val;
     }
@@ -335,8 +339,9 @@ function evaluate(env: ObjEnv, val: Obj): Obj {
       return apply(env, fn, args);
     }
     default:
-      throw new Error('eval: idk');
+      unreachable(val);
   }
+  return nil;
 }
 
 function evaluateList(env: ObjEnv, list: Obj): Obj {
@@ -378,7 +383,7 @@ function apply(env: ObjEnv, fn: Obj, args: Obj): Obj {
     }
     case ObjType.Pair: {
       checkArity(args, 1);
-      const index = getArg(env, args, 0, ObjType.Num) as ObjNum;
+      const index = evalArg(env, args, 0, ObjType.Num) as ObjNum;
       let currentIndex = 0;
       let obj: Obj = fn;
       while (obj.type === ObjType.Pair) {
@@ -628,7 +633,7 @@ function checkArity(args: Obj, min: number, max: number = min) {
   }
 }
 
-function getArg(env: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
+function getArg(_: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
   if (args === nil) {
     return nil;
   }
@@ -643,28 +648,19 @@ function getArg(env: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
     }
   });
 
-  const earg = evaluate(env, argAtIndex);
-
-  if (type && earg.type !== type) {
+  if (type && argAtIndex.type !== type) {
     throw new Error(`expected type ${type} but got ${argAtIndex.type}`);
   }
-  return earg;
+  return argAtIndex;
 }
 
-function getArgList(env: ObjEnv, args: Obj, type: ObjType, startIndex: number): Obj {
-  if (args === nil) {
-    return nil;
+function evalArg(env: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
+  const arg = getArg(env, args, index);
+  const earg = evaluate(env, arg);
+  if (type && earg.type !== type) {
+    throw new Error(`expected type ${type} but got ${earg.type}`);
   }
-
-  const evaledArgs = evaluateList(env, args);
-
-  forEach(evaledArgs, (arg) => {
-    if (arg.type !== type) {
-      throw new Error(`expected ${type} but got ${arg.type}`);
-    }
-  });
-
-  return evaledArgs;
+  return earg;
 }
 
 function evaluateUnquotes(env: ObjEnv, args: Obj): Obj {
@@ -793,7 +789,7 @@ function primEqual(env: ObjEnv, args: Obj): Obj {
 
 function primSlurp(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
-  const sym = getArg(env, args, 0, ObjType.String) as ObjString;
+  const sym = evalArg(env, args, 0, ObjType.String) as ObjString;
   return makeString(Deno.readTextFileSync(sym.value));
 }
 
@@ -847,7 +843,7 @@ function primImport(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
 
   // read file
-  const path = getArg(env, args, 0, ObjType.String) as ObjString;
+  const path = evalArg(env, args, 0, ObjType.String) as ObjString;
   const fileContent = Deno.readTextFileSync(path.value);
 
   // eval file
@@ -879,8 +875,8 @@ function primImport(env: ObjEnv, args: Obj): Obj {
 
 function primError(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 2);
-  const val = getArg(env, args, 0);
-  const msg = getArg(env, args, 1, ObjType.String) as ObjString;
+  const val = evalArg(env, args, 0);
+  const msg = evalArg(env, args, 1, ObjType.String) as ObjString;
 
   // we only have 't and nil
   if (val === nil) {
@@ -890,11 +886,23 @@ function primError(env: ObjEnv, args: Obj): Obj {
   return nil;
 }
 
+function primIf(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 2, 3);
+  const cond = evalArg(env, args, 0);
+  const ifExpr = getArg(env, args, 1);
+  const elseExpr = getArg(env, args, 2);
+
+  if (cond === trueSym) {
+    return evaluate(env, ifExpr);
+  }
+  return evaluate(env, elseExpr);
+}
+
 function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
   return (env, args) => {
     checkArity(args, 2);
-    const a = getArg(env, args, 0, ObjType.Num) as ObjNum;
-    const b = getArg(env, args, 1, ObjType.Num) as ObjNum;
+    const a = evalArg(env, args, 0, ObjType.Num) as ObjNum;
+    const b = evalArg(env, args, 1, ObjType.Num) as ObjNum;
     return makeNum(fn(a.value, b.value));
   }
 }
@@ -902,6 +910,7 @@ function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
 function createDefaultEnv(): ObjEnv {
   const env = makeEnv(nil, nil);
   addVariable(env, intern('nil'), nil);
+  addVariable(env, intern('t'), trueSym);
 
   const primitives: Record<string, ElyspFn> = {
     'fn': primFn,
@@ -914,6 +923,7 @@ function createDefaultEnv(): ObjEnv {
     'env': (env) => env,
     'macex': primMacex,
     'import': primImport,
+    'if': primIf,
     'error': primError,
     'io/slurp': primSlurp,
     'io/print': primPrintln,
