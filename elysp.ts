@@ -603,6 +603,40 @@ class Reader {
 
 
 // UTILS
+function equal(a: Obj, b: Obj): boolean {
+  // types must match
+  if (a.type !== b.type) {
+    return false;
+  }
+
+  // reference equality
+  if (a === b) {
+    return true;
+  }
+
+  switch (a.type) {
+    case ObjType.Num: {
+      return a.value === (b as ObjNum).value;
+    }
+    case ObjType.String: {
+      return a.value === (b as ObjString).value;
+    }
+    case ObjType.Pair: {
+      if (listLen(a) !== listLen(b)) {
+        return false;
+      }
+
+      if (!equal(a.car, (b as ObjPair).car)) {
+        return false;
+      }
+
+      return equal(a.cdr, (b as ObjPair).cdr);
+    }
+  }
+
+  return false;
+}
+
 function listLen(list: Obj): number {
   if (list.type !== ObjType.Pair) {
     return 0;
@@ -767,24 +801,11 @@ function primFn(env: ObjEnv, args: Obj): Obj {
 }
 
 function primEqual(env: ObjEnv, args: Obj): Obj {
-  checkArity(args, 2, -1);
-  let prev: Obj | null = null;
-  let eq = true;
-  forEach(evaluateList(env, args), (obj) => {
-    if (prev === null) {
-      prev = obj;
-      return;
-    }
+  checkArity(args, 2);
+  const a = evalArg(env, args, 0);
+  const b = evalArg(env, args, 1);
 
-    if (!eq) {
-      return;
-    }
-
-    // reference eq
-    eq = obj === prev;
-  });
-
-  return eq ? trueSym : nil;
+  return equal(a, b) ? trueSym : nil;
 }
 
 function primSlurp(env: ObjEnv, args: Obj): Obj {
