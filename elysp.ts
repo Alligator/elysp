@@ -67,11 +67,12 @@ const makeString = (value: string): ObjString => ({ type: ObjType.String, value 
 
 const unreachable = (_: never): never => { throw new Error(); }
 
-const nil = makeNil();
-const trueSym = makeSymbol('t');
+const cons = makePair;
 let symbols: Obj = makeNil();
 
-const cons = makePair;
+const nil = makeNil();
+const trueSym = intern('t');
+
 function acons(x: Obj, y: Obj, a: Obj): Obj {
   return cons(cons(x, y), a);
 }
@@ -209,6 +210,11 @@ function reprln(inputObj: Obj) {
 // print prints a value like the primitive print function will
 // no colours, formatting etc
 function print(inputObj: Obj) {
+  puts(fmt(inputObj));
+}
+
+function fmt(inputObj: Obj): string {
+  let output = '';
   let obj = inputObj;
   switch (obj.type) {
     // treat an env like a pair, ignore the up ptr
@@ -216,61 +222,63 @@ function print(inputObj: Obj) {
       obj = obj.vars;
       // intentional fallthrough
     case ObjType.Pair: {
-      puts('(');
+      output += '(';
       let left = 6; // show 6 max
       while (obj.type === ObjType.Pair) {
         if (left === 0) {
-          puts('...');
+          output += '...';
           break;
         }
 
-        print(obj.car);
+        output += fmt(obj.car);
         if (obj.cdr.type === ObjType.Nil) {
           break;
         } else if (obj.cdr.type !== ObjType.Pair) {
-          puts(' . ');
-          print(obj.cdr);
+          output += ' . ';
+          output += fmt(obj.cdr);
           break;
         }
-        puts(' ');
+        output += ' ';
         obj = obj.cdr;
         left--;
       }
-      puts(')');
-      return;
+      output += ')';
+      return output;
     }
     case ObjType.Symbol: {
-      puts(obj.name);
-      return;
+      output += obj.name;
+      return output;
     }
     case ObjType.Nil: {
-      puts('nil');
-      return;
+      output += 'nil';
+      return output;
     }
     case ObjType.Num: {
-      puts(obj.value.toString());
-      return;
+      output += obj.value.toString();
+      return output;
     }
     case ObjType.NativeFn: {
-      puts(`<native function ${obj.fn.name}>`);
-      return;
+      output += `<native function ${obj.fn.name}>`;
+      return output;
     }
     case ObjType.Fn: {
-      puts(`<function>`);
-      return;
+      output += `<function>`;
+      return output;
     }
     case ObjType.Macro: {
-      puts(`<macro>`);
-      return;
+      output += `<macro>`;
+      return output;
     }
     case ObjType.String: {
-      puts(obj.value);
-      return;
+      output += obj.value;
+      return output;
     }
     default: {
       unreachable(obj);
     }
   }
+
+  return output;
 }
 
 function find(env: ObjEnv, sym: ObjSymbol): Obj | null {
@@ -592,8 +600,8 @@ class Reader {
   }
 
   skipComments() {
-    while (this.peek() === '#' && this.peek(1) !== '-') {
-      while(this.peek() !== '\n') {
+    while (!this.atEof() && this.peek() === '#' && this.peek(1) !== '-') {
+      while(!this.atEof() && this.peek() !== '\n') {
         this.advance();
       }
       this.skipWhitespace();
@@ -895,16 +903,9 @@ function primImport(env: ObjEnv, args: Obj): Obj {
 }
 
 function primError(env: ObjEnv, args: Obj): Obj {
-  checkArity(args, 2);
-  const val = evalArg(env, args, 0);
-  const msg = evalArg(env, args, 1, ObjType.String) as ObjString;
-
-  // we only have 't and nil
-  if (val === nil) {
-    throw new Error(msg.value);
-  }
-
-  return nil;
+  checkArity(args, 1);
+  const msg = evalArg(env, args, 0, ObjType.String) as ObjString;
+  throw new Error(msg.value);
 }
 
 function primIf(env: ObjEnv, args: Obj): Obj {
@@ -919,6 +920,22 @@ function primIf(env: ObjEnv, args: Obj): Obj {
   return evaluate(env, elseExpr);
 }
 
+function primString(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 1, -1);
+  const strings: string[] = [];
+
+  forEach(args, (arg) => {
+    const earg = evaluate(env, arg);
+    strings.push(fmt(earg));
+  });
+
+  if (strings.length === 0) {
+    return nil;
+  }
+
+  return makeString(strings.join(''));
+}
+
 function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
   return (env, args) => {
     checkArity(args, 2);
@@ -931,7 +948,7 @@ function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
 function createDefaultEnv(): ObjEnv {
   const env = makeEnv(nil, nil);
   addVariable(env, intern('nil'), nil);
-  addVariable(env, intern('t'), trueSym);
+  addVariable(env, trueSym, trueSym);
 
   const primitives: Record<string, ElyspFn> = {
     'fn': primFn,
@@ -946,6 +963,7 @@ function createDefaultEnv(): ObjEnv {
     'import': primImport,
     'if': primIf,
     'error': primError,
+    'string': primString,
     'io/slurp': primSlurp,
     'io/print': primPrintln,
     'reader/debug': primReaderDebug,
@@ -959,6 +977,21 @@ function createDefaultEnv(): ObjEnv {
   Object.entries(primitives).map(([name, value]) => {
     addVariable(env, intern(name), makeNativeFn(value));
   });
+
+  // FIXME this should def not be happening here
+  const coreSrc = Deno.readTextFileSync('core.elysp');
+  const reader = new Reader(coreSrc);
+  try {
+    while (!reader.atEof()) {
+      const next = reader.read();
+      if (next === null) {
+        break;
+      }
+      evaluate(env, next);
+    }
+  } catch (e) {
+    throw e;
+  }
 
   return env;
 }
@@ -986,7 +1019,7 @@ if (Deno.args.length) {
       evaluate(env, next);
     }
   } catch (e) {
-    console.log(e.stack);
+    console.log(e.toString());
   }
 } else {
   // REPL
@@ -1005,7 +1038,7 @@ if (Deno.args.length) {
       repr(evaluate(env, next));
       puts('\n');
     } catch (e) {
-      console.log(e.stack);
+      console.log(e.toString());
     }
   }
 }

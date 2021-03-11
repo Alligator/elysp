@@ -1,5 +1,0 @@
-(defn add-two (x)
-  (+ x 2 3))
-
-(print (add-two 4))
-(print (add-two 6))

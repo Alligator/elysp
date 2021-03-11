@@ -1,0 +1,2 @@
+(defmacro assert (cond)
+  '(if ,cond nil (error (string "assert failed! " ',cond))))
