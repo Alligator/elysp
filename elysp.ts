@@ -746,18 +746,14 @@ function evaluateUnquotes(env: ObjEnv, args: Obj): Obj {
 }
 
 // PRIMITIVES
+function primPrint(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 1);
+  print(evalArg(env, args, 0));
+  return nil;
+}
+
 function primPrintln(env: ObjEnv, args: Obj): Obj {
-  if (args.type === ObjType.Pair) {
-    const evaledArgs = evaluateList(env, args);
-    if (evaledArgs.type === ObjType.Pair) {
-      forEach(evaledArgs, (arg: Obj) => {
-        print(arg);
-        puts(' ');
-      });
-    }
-  } else {
-    print(evaluate(env, args));
-  }
+  primPrint(env, args);
   puts('\n');
   return nil;
 }
@@ -978,8 +974,9 @@ function createDefaultEnv(): ObjEnv {
     'if': primIf,
     'error': primError,
     'string': primString,
-    'io/slurp': primSlurp,
-    'io/print': primPrintln,
+    'slurp': primSlurp,
+    'print': primPrint,
+    'println': primPrintln,
     'reader/debug': primReaderDebug,
     '=': primEqual,
     '+': createNumericPrim((a, b) => a + b),
@@ -1033,7 +1030,7 @@ if (Deno.args.length) {
       evaluate(env, next);
     }
   } catch (e) {
-    console.log(e.toString());
+    console.log(e);
   }
 } else {
   // REPL

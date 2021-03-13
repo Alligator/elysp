@@ -1,7 +1,7 @@
 (defmacro test (name actual exp)
   '((fn ()
-    (io/print (string "test " ,name))
-    (if (= ,actual ,exp) nil (error (string "test " ',actual " failed! expected '" ,exp "' but got '" ,actual "'"))))))
+    (print (string ,name "..."))
+    (if (= ,actual ,exp) (println "ok") (error (string "test " ',actual " failed! expected '" ,exp "' but got '" ,actual "'"))))))
 
 # functions
 (test "fn" ((fn (x) x) 2) 2)
