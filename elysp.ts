@@ -391,7 +391,7 @@ function apply(env: ObjEnv, fn: Obj, args: Obj): Obj {
     }
     case ObjType.Pair: {
       checkArity(args, 1);
-      const index = evalArg(env, args, 0, ObjType.Num) as ObjNum;
+      const index = evalArg(env, args, 0, ObjType.Num);
       let currentIndex = 0;
       let obj: Obj = fn;
       while (obj.type === ObjType.Pair) {
@@ -675,7 +675,7 @@ function checkArity(args: Obj, min: number, max: number = min) {
   }
 }
 
-function getArg(_: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
+function getArg<K extends ObjType>(_: ObjEnv, args: Obj, index: number, type?: K): Extract<Obj, { type: K }> | ObjNil {
   if (args === nil) {
     return nil;
   }
@@ -684,25 +684,34 @@ function getArg(_: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
   }
 
   let argAtIndex: Obj = nil;
-  forEach(args, (arg: Obj, argIndex: number) => {
-    if (index === argIndex) {
-      argAtIndex = arg;
+  let argIndex = 0;
+  let obj: Obj = args;
+  while (obj.type === ObjType.Pair) {
+    if (argIndex === index) {
+      argAtIndex = obj.car;
+      break;
     }
-  });
+    argIndex++;
+    obj = obj.cdr;
+  }
+
+  if (argAtIndex === null) {
+    return nil;
+  }
 
   if (type && argAtIndex.type !== type) {
     throw new Error(`expected type ${type} but got ${argAtIndex.type}`);
   }
-  return argAtIndex;
+  return argAtIndex as Extract<Obj, { type: K }>;
 }
 
-function evalArg(env: ObjEnv, args: Obj, index: number, type?: ObjType): Obj {
+function evalArg<K extends ObjType>(env: ObjEnv, args: Obj, index: number, type?: K): Extract<Obj, { type: K }> {
   const arg = getArg(env, args, index);
   const earg = evaluate(env, arg);
   if (type && earg.type !== type) {
     throw new Error(`expected type ${type} but got ${earg.type}`);
   }
-  return earg;
+  return earg as Extract<Obj, { type: K }>;
 }
 
 function evaluateUnquotes(env: ObjEnv, args: Obj): Obj {
@@ -818,7 +827,7 @@ function primEqual(env: ObjEnv, args: Obj): Obj {
 
 function primSlurp(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
-  const sym = evalArg(env, args, 0, ObjType.String) as ObjString;
+  const sym = evalArg(env, args, 0, ObjType.String);
   return makeString(Deno.readTextFileSync(sym.value));
 }
 
@@ -872,7 +881,7 @@ function primImport(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
 
   // read file
-  const path = evalArg(env, args, 0, ObjType.String) as ObjString;
+  const path = evalArg(env, args, 0, ObjType.String);
   const fileContent = Deno.readTextFileSync(path.value);
 
   // eval file
@@ -904,7 +913,7 @@ function primImport(env: ObjEnv, args: Obj): Obj {
 
 function primError(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
-  const msg = evalArg(env, args, 0, ObjType.String) as ObjString;
+  const msg = evalArg(env, args, 0, ObjType.String);
   throw new Error(msg.value);
 }
 
@@ -939,8 +948,8 @@ function primString(env: ObjEnv, args: Obj): Obj {
 function createNumericPrim(fn: (a: number, b: number) => number): ElyspFn {
   return (env, args) => {
     checkArity(args, 2);
-    const a = evalArg(env, args, 0, ObjType.Num) as ObjNum;
-    const b = evalArg(env, args, 1, ObjType.Num) as ObjNum;
+    const a = evalArg(env, args, 0, ObjType.Num);
+    const b = evalArg(env, args, 1, ObjType.Num);
     return makeNum(fn(a.value, b.value));
   }
 }
