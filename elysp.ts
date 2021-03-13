@@ -475,7 +475,7 @@ class Reader {
       case '[': {
         this.advance();
         const list = this.readList(']');
-        const result = cons(intern('quote'), cons(list, nil));
+        const result = cons(intern('list'), list);
         this.consume(']');
         return result;
       }
@@ -745,7 +745,6 @@ function evaluateUnquotes(env: ObjEnv, args: Obj): Obj {
   return head;
 }
 
-
 // PRIMITIVES
 function primPrintln(env: ObjEnv, args: Obj): Obj {
   if (args.type === ObjType.Pair) {
@@ -773,6 +772,11 @@ function primQuote(env: ObjEnv, args: Obj): Obj {
 function primUnquote(env: ObjEnv, args: Obj): Obj {
   checkArity(args, 1);
   return evaluate(env, (args as ObjPair).car);
+}
+
+function primList(env: ObjEnv, args: Obj): Obj {
+  checkArity(args, 1, -1);
+  return evaluateList(env, args);
 }
 
 function primDefine(env: ObjEnv, args: Obj): Obj {
@@ -966,6 +970,7 @@ function createDefaultEnv(): ObjEnv {
     'defmacro': primDefmacro,
     'quote': primQuote,
     'unquote': primUnquote,
+    'list': primList,
     'cons': primCons,
     'env': (env) => env,
     'macex': primMacex,
